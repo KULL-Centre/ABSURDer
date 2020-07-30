@@ -15,7 +15,7 @@ mpl.rcParams['axes.labelsize']  = 18
 mpl.rcParams['legend.fontsize'] = 14
 warnings.filterwarnings('ignore')
 
-class AbsurdER:
+class ABSURDer:
 
     def __init__( self, rex, rmd, eex = '', out = 'results', thetas = np.array([100,1000,10000]), idx = [], methyl_list = None ):
 
@@ -74,8 +74,7 @@ class AbsurdER:
         if len(self.idx) > 0:
             self.ignore_methyls()                                    # ignore some methyls in the analysis
 
-        self.ths = thetas                                            # set of fudge parameters
-        self.ths = -np.sort(-self.ths)
+        self.ths = -np.sort(-thetas)                                 # set of fudge parameters
         self.out = out                                               # path to file where to save results
         self.r   = self.rex.shape[0]                                 # number of rates
         self.m   = self.rex.shape[1]                                 # number of methyls
@@ -588,7 +587,7 @@ class AbsurdER:
             insax = ax.inset_axes([0.05,0.6,0.4,0.38])
 
             insax.plot( self.phi, self.chi, 'o-', c = 'tab:grey', markersize = 4, mec = 'k')
-            insax.scatter( self.phi[opt_id], self.chi[opt_id], marker = 'X', c = 'tab:red', zorder = 10, s = 90, edgecolor = 'k' )
+            insax.scatter( self.phi[len(self.ths) - opt_id], self.chi[len(self.ths) - opt_id], marker = 'X', c = 'tab:red', zorder = 10, s = 90, edgecolor = 'k' )
             insax.set_xlabel(r'$\phi_{eff}$', fontsize = 14)
             insax.set_ylabel(r'$\chi^2_R$', fontsize = 14)
             insax.yaxis.tick_right()

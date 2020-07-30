@@ -168,6 +168,8 @@ def parse():
                         help = 'Path to the QUADRIC Diffusion executable.' )
     parser.add_argument( '--pdbinertia', type = str, required = True,
                         help = 'Path to the PDBInertia executable.' )
+    parser.add_argument( '--in', type = str, required = True,
+                        help = 'Path to input directory.' )
     parser.add_argument( '--b', type = int, required = False, default = 0,
                         help = 'Initial time (in ps) to be used in the trajectory (default: 0 ps).' )
     parser.add_argument( '--e', type = int, required = False, default = 1000000,
@@ -197,7 +199,7 @@ def parse():
 ########## MAIN ##########
 ##########################
 
-quadric, pdbinertia, b_frame, e_frame, l_blocks_bb, l_blocks_methyl, start_taum, trajname, ct_lim, wD, tumbling, gen_mlist = parse()
+quadric, pdbinertia, in_dir, b_frame, e_frame, l_blocks_bb, l_blocks_methyl, start_taum, trajname, ct_lim, wD, tumbling, gen_mlist = parse()
 
 print( f"# The following parameters were chosen:\n quadric: {quadric}\n pdbinertia: {pdbinertia}\n b: {b_frame}, e: {e_frame}\n BB block length: {l_blocks_bb} ps, Methyl block length: {l_blocks_methyl} ps\n starting tauM: {start_taum} ps\n Common trajectory name: {trajname}\n C(t) limit: {ct_lim}\n OmegaD: {wD} MHz\n" )
 
@@ -205,14 +207,14 @@ if gen_mlist:
     ''' Get list with methyl names '''
     
     print("# Generating methyl list.")
-    mkdir( 'tau' )
+    mkdir( f'{in_dir}/tau' )
     methyls_carbons = { 'ALA': ['CB'], 'VAL': ['CG1', 'CG2'], 'THR': ['CG2'], 'ILE': ['CG2', 'CD1'], 'LEU': ['CD1', 'CD2'], 'MET': ['CE'] }
     
-    struct          = md.load('initial.pdb')
+    struct          = md.load(f'{in_dir}/initial.pdb')
     topology        = struct.topology
     table, bonds    = topology.to_dataframe()
     
-    with open( 'tau/tauR_methyl_specific', 'w' ) as f: # Creates a file listing the methyl names
+    with open( f'{in_dir}/tau/tauR_methyl_specific', 'w' ) as f: # Creates a file listing the methyl names
         for res in methyls_carbons.keys():
             mtable = table[table['resName'] == res]
 
@@ -232,9 +234,9 @@ if gen_mlist:
 len_traj        = e_frame - b_frame
 n_blocks_bb     = int( len_traj / l_blocks_bb )
 n_blocks_methyl = int( len_traj / l_blocks_methyl )
-nh_res          = load('nh_residues.pkl')
+nh_res          = load(f'{in_dir}/nh_residues.pkl')
 nh_count        = len( nh_res )
-tmp             = glob.glob('tcf_methyl/*.pbz2')
+tmp             = glob.glob(f'{in_dir}/tcf_methyl/*.pbz2')
 ntraj           = int( len( tmp ) )
 # Larmor frequency of deuterium
 wD *= 2. * np.pi * 1000000
@@ -244,7 +246,7 @@ wD *= 2. * np.pi * 1000000
 if tumbling == '':
 #     tmp = glob.glob('tcf_bb/*.xvg')
     
-    bb_pkls = sort_nicely( glob.glob(f'tcf_bb/{trajname}*_prot_nopbc.pbz2') )
+    bb_pkls = sort_nicely( glob.glob(f'{in_dir}/tcf_bb/{trajname}*_prot_nopbc.pbz2') )
     for trj in range( ntraj ): 
         tcfs_bb = []
         
@@ -324,15 +326,15 @@ if tumbling == '':
                     raise ValueError( f'Invalid fit for NH vector {tcf}.' )
             tau_Ms.append( tau_tmp )
 
-        mkdir( 'tau' )
-        with open( f'tau/{trajname}{trj}_tauM.pkl', 'wb' ) as fp:
+        mkdir( f'{in_dir}/tau' )
+        with open( f'{in_dir}/tau/{trajname}{trj}_tauM.pkl', 'wb' ) as fp:
                     pkl.dump( tau_Ms, fp )
 
     ''' Load tauMs and residue numbers & save tm.avg.input '''
 
     print("# Averaging tauMs over trajectories and blocks")
     tauMs = []
-    for f in glob.glob( 'tau/*_tauM.pkl' ):
+    for f in glob.glob( f'{in_dir}/tau/*_tauM.pkl' ):
         pin      = open( f, "rb" )
         tauMs.append( pkl.load( pin ) )
 
@@ -345,32 +347,32 @@ if tumbling == '':
     tm_input[:,1] = tauM_av/1000
     tm_input[:,2] = tauM_std/1000
 
-    np.savetxt('tau/tm.avg.input', tm_input, fmt = '%g')
+    np.savetxt(f'{in_dir}/tau/tm.avg.input', tm_input, fmt = '%g')
 
     ''' Prepare pdb with initial coordinates '''
 
     print("# Running PDBInertia")
-    process = f'{pdbinertia} -r initial.pdb tau/initial.prot.inertia.pdb > tau/initial.inertia.output'
+    process = f'{pdbinertia} -r initial.pdb {in_dir}/tau/initial.prot.inertia.pdb > {in_dir}/tau/initial.inertia.output'
     p       = subprocess.Popen( process, shell = True, stdin = subprocess.PIPE, stdout = subprocess.PIPE, universal_newlines = True )
     p.communicate()
 
     ''' Write QUADRIC input file and execute QUADRIC '''
 
     print("# Running QUADRIC Diffusion")
-    with open( 'tau/quadric.in', 'w' ) as f:
-        f.write( "# sample control file\n0.8 1.2 10\n1 'N'\ntau/tm.avg.input\ntau/initial.prot.inertia.pdb\navg.axial.pdb\navg.anis.pdb\n" )
+    with open( f'{in_dir}/tau/quadric.in', 'w' ) as f:
+        f.write( f"# sample control file\n0.8 1.2 10\n1 'N'\n{in_dir}/tau/tm.avg.input\n{in_dir}/tau/initial.prot.inertia.pdb\navg.axial.pdb\navg.anis.pdb\n" )
 
-    process = f'{quadric} tau/quadric.in > tau/quadric_log.out'
+    process = f'{quadric} {in_dir}/tau/quadric.in > {in_dir}/tau/quadric_log.out'
 
     p       = subprocess.Popen( process, shell = True, stdin = subprocess.PIPE, stdout = subprocess.PIPE, universal_newlines = True )
     p.communicate()
-    os.system('mv avg.axial.pdb avg.anis.pdb tau/') # Quadric has problems saving the output in the correct directory, thus they are moved afterwards
+    os.system(f'mv avg.axial.pdb avg.anis.pdb {in_dir}/tau/') # Quadric has problems saving the output in the correct directory, thus they are moved afterwards
 
     ''' Calculate distances between C-CH atoms '''
 
     print("# Calculating distances between C-CH atoms")
-    struct          = md.load('initial.pdb')
-    axial           = md.load('tau/avg.axial.pdb')
+    struct          = md.load(f'{in_dir}/initial.pdb')
+    axial           = md.load(f'{in_dir}/tau/avg.axial.pdb')
     topology        = struct.topology
     table, bonds    = topology.to_dataframe()
 
@@ -420,7 +422,7 @@ if tumbling == '':
     ''' Parsing Diso and Dpar from quadric output '''
 
     print("# Computing methyl specific tauR")
-    with open('tau/quadric_log.out', 'r') as f:
+    with open(f'{in_dir}/tau/quadric_log.out', 'r') as f:
         lines = f.readlines()
         
     # Parses the QUADRIC output file to extract Diso and Dpar/Dper:
@@ -455,7 +457,7 @@ if tumbling == '':
     pkl_tauRs = []
 
     # Write to human readible file:
-    with open( 'tau/tauR_methyl_specific', 'w' ) as f:
+    with open( f'{in_dir}/tau/tauR_methyl_specific', 'w' ) as f:
         f.write( '#resID tauR[ns]\n' )
         for i,tauR in enumerate( tauRs ):
             pkl_tauRs.append( [methyl_names[i], tauR] )
@@ -479,7 +481,7 @@ methyl_count = len(tauRs)
 
 tcfs_methyl_l  = []
 
-methyl_pkl = sort_nicely( glob.glob(f'tcf_methyl/{trajname}*_rot_trans.pbz2') )
+methyl_pkl = sort_nicely( glob.glob(f'{in_dir}/tcf_methyl/{trajname}*_rot_trans.pbz2') )
 
 for trj in range( ntraj ):
     print( f"# Analysing trajectory {trj+1}/{ntraj}" )
@@ -556,21 +558,21 @@ for trj in range( ntraj ):
     Jws        = np.array( Jws ).T
     JNMRs      = np.array( JNMRs ).T
 
-    mkdir('results')
-    save(f'results/{trj+1}_rates', traj_rates)
-    save(f'results/{trj+1}_J', Jws)
-    save(f'results/{trj+1}_JNMR', JNMRs)
+    mkdir(f'{in_dir}/results')
+    save(f'{in_dir}/results/{trj+1}_rates', traj_rates)
+    save(f'{in_dir}/results/{trj+1}_J', Jws)
+    save(f'{in_dir}/results/{trj+1}_JNMR', JNMRs)
 
 ''' Load final results, merge trajectories and order methyls in sequence order '''
 
 print("# Merging final results")
 # Merge the arrays (from different trajectories):
-rates = load_and_concat( 'results/*_rates.pkl' )
-J     = load_and_concat( 'results/*_J.pkl' )
-JNMR  = load_and_concat( 'results/*_JNMR.pkl' )
+rates = load_and_concat( f'{in_dir}/results/*_rates.pkl' )
+J     = load_and_concat( f'{in_dir}/results/*_J.pkl' )
+JNMR  = load_and_concat( f'{in_dir}/results/*_JNMR.pkl' )
 
 if tumbling == '':
-    with open( 'tau/tauR_methyl_specific', 'r' ) as f:
+    with open( f'{in_dir}/tau/tauR_methyl_specific', 'r' ) as f:
         lines = f.readlines()
 else:
     with open( tumbling, 'r' ) as f:
@@ -582,15 +584,15 @@ for l in lines:
     if '#' in l[0]:
         continue
     else:
-        methyl_labels.append( l[0] )  
+        methyl_labels.append( l[0] )  s
 # Sort the arrays in methyl order:      
 rates = sort_arr( rates, methyl_labels )
 J     = sort_arr( J, methyl_labels )
 JNMR  = sort_arr( JNMR, methyl_labels )
 
-save( 'results/rates', rates )
-save( 'results/J', J )
-save( 'results/JNMR', JNMR )
-save( 'results/methyls', sort_nicely( methyl_labels ) ) # Save sorted list of methyls
+save( f'{in_dir}/results/rates', rates )
+save( f'{in_dir}/results/J', J )
+save( f'{in_dir}/results/JNMR', JNMR )
+save( f'{in_dir}/results/methyls', sort_nicely( methyl_labels ) ) # Save sorted list of methyls
 
 print("# DONE!")

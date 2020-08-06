@@ -88,6 +88,9 @@ class ABSURDer:
         self.chi = []                                                # reduced chi squared corresponding to optimized weights
         self.cor = []                                                # Pearson correlation corresponding to optimized weights
 
+        self.specdens_load = False                                   # spectral densities have been loaded
+        self.rot_load     = False                                    # rotamers have been loaded
+
         for r in range(self.r):
             self.ix2.append( self.chi2r(r, self.w0) )
         self.ix2.append( self.chi2r(-1, self.w0) )
@@ -430,14 +433,15 @@ class ABSURDer:
         nsamples = int( self.b / window_length )
         rmd_copy = np.copy( self.rmd )
         emd_copy = np.copy( self.emd )
+        rex_copy = np.copy( self.rex )
 
         A = []
         for n in range(nsamples+1):
             A.append( [n * window_length, (n + 1) * window_length] )
 
         self.emd = np.zeros_like(self.rmd[:, :, 0])
+        self.rex = np.average( self.rmd, axis = -1 )
         chi = self.chi2r(-1, self.w0)
-        print(chi)
 
         chi2 = []
         for i in range(nsamples):
@@ -460,13 +464,16 @@ class ABSURDer:
 
         self.emd = np.copy( emd_copy )
         self.rmd = np.copy( rmd_copy )
+        self.rex = np.copy( rex_copy )
 
         print(chi2)
 
-        plt.plot( np.arange(1,nsamples+1,1), chi2, 'o-', c = 'k' )
-        plt.xlabel('Samples out')
-        plt.ylabel(r'Average $\chi^2$')
-        plt.show()
+        plt.figure( figsize = (9.55,5) )
+        plt.plot( np.flip( np.arange(1,nsamples+1,1) )/nsamples * 100, chi2, 'o-', c = 'k' )
+        plt.xlabel('% of MD data retained')
+        plt.ylabel(r'$\chi^2$ to full MD dataset')
+        plt.tight_layout()
+        plt.savefig('chi2_crosscorr.pdf', format = 'pdf')
     # ----------------------------------------------------------------------------------------------------------------
 
     def plot_phix2r( self, r, outfig = None ):
@@ -587,7 +594,7 @@ class ABSURDer:
             insax = ax.inset_axes([0.05,0.6,0.4,0.38])
 
             insax.plot( self.phi, self.chi, 'o-', c = 'tab:grey', markersize = 4, mec = 'k')
-            insax.scatter( self.phi[len(self.ths) - opt_id], self.chi[len(self.ths) - opt_id], marker = 'X', c = 'tab:red', zorder = 10, s = 90, edgecolor = 'k' )
+            insax.scatter( self.phi[opt_id], self.chi[opt_id], marker = 'X', c = 'tab:red', zorder = 10, s = 90, edgecolor = 'k' )
             insax.set_xlabel(r'$\phi_{eff}$', fontsize = 14)
             insax.set_ylabel(r'$\chi^2_R$', fontsize = 14)
             insax.yaxis.tick_right()
@@ -610,31 +617,90 @@ class ABSURDer:
             plt.show()
     #----------------------------------------------------------------------------------------------------------------
 
-    def load_specdens( self, input1, input2, input3 ):
+    def load_specdens( self, jex, jws, jmd ):
 
-        pin = open(input1, "rb")
-        self.jex = pickle.load(pin)
+        """
+        Loads into the class the files needed to plot the spectral densities
+
+        Parameters
+        ----------
+        jex : str
+            path to the pickle with the experimental spectral density functions.
+        jws : int
+            path to the pickle with the values of J(0), J(w) and J(2w).
+        jmd : str
+            path to the pickle with the simulated spectral density functions.
+        """
+
+        pin = open( jex, "rb" )
+        self.jex = pickle.load( pin )
         self.jex = self.jex.T #remember to remove this with new data!!
 
-        pin = open(input2, "rb")
-        self.jws = pickle.load(pin)
+        pin = open( jws, "rb" )
+        self.jws = pickle.load( pin )
         self.jws = self.jws.T  # remember to remove this with new data!!
 
-        pin = open(input3, "rb")
-        self.jmd = pickle.load(pin)
+        pin = open( jmd, "rb" )
+        self.jmd = pickle.load( pin )
         self.jmd = self.jmd.T  # remember to remove this with new data!!
+
+        self.ignore_specdens() #ignore a set of methyl groups
+        self.specdens_load = True
     #-----------------------------------------------------------------------------------------------------------------
 
-    def load_rotamers( self, input1, input2, input3 ):
+    def ignore_specdens( self ):
 
-        pin = open(input1, "rb")
-        self.exrot = pickle.load(pin)
+        """
+        Removes from the dataset of spectral densities a list of specified methyls that need to be ignored.
 
-        pin = open(input2, "rb")
-        self.mdrot = pickle.load(pin)
+        Parameters
+        ----------
+        idx : list
+            indices of methyls to be removed
+        """
 
-        pin = open(input3, "rb")
-        self.ami = pickle.load(pin)
+        jex = np.empty( (self.jex.shape[0], self.jex.shape[1] - len(self.idx), self.jex.shape[2]) )
+        jmd = np.empty( (self.jmd.shape[0], self.jmd.shape[1] - len(self.idx), self.jmd.shape[2]) )
+        jws = np.empty( (self.jws.shape[0], self.jws.shape[1] - len(self.idx), self.jws.shape[2]) )
+
+        k = 0
+        for j in range(self.jex.shape[1]):
+            if j not in self.idx:
+                jex[:,k,:] = self.jex[:,j,:]
+                jmd[:,k,:] = self.jmd[:,j,:]
+                jws[:,k,:] = self.jws[:,j,:]
+                k += 1
+
+        self.jex = jex
+        self.jws = jws
+        self.jmd = jmd
+    # -----------------------------------------------------------------------------------------------------------------
+
+    def load_rotamers( self, exrot, mdrot, ami ):
+
+        """
+        Loads into the class the files needed to plot the rotamer distributions
+
+        Parameters
+        ----------
+        exrot : str
+            path to the pickle with the experimental rotamer distributions.
+        mdrot : int
+            path to the pickle with the simulated rotamer distributions.
+        ami : str
+            path to the pickle with the amino acid employed in the calculation of the different rotamers.
+        """
+
+        pin = open( exrot, "rb" )
+        self.exrot = pickle.load( pin )
+
+        pin = open( mdrot, "rb" )
+        self.mdrot = pickle.load( pin )
+
+        pin = open( ami, "rb" )
+        self.ami = pickle.load( pin )
+
+        self.rot_load = True
     #-----------------------------------------------------------------------------------------------------------------
 
     def plot_specdens( self, idx, wd, opt_theta = None, rate_labels = [], outfig = None ):
@@ -660,6 +726,9 @@ class ABSURDer:
             path to the figure to save. If not provided, the figure will be prompted on screen and not saved.
             Default = None.
         """
+
+        if not self.specdens_load:
+            raise ValueError("Spectral densities have not been loaded. Use load_specdens() for that.")
 
         pico    = 1. * 10 ** (-12)  # picoseconds
         omega_D = 2. * np.pi * wd * 1000000
@@ -688,6 +757,7 @@ class ABSURDer:
         ax1.set_xlabel(r'$\omega $ [s$^{-1}$]' + f'\n\n')
         ax1.set_yscale('log')
         ax1.xaxis.offsetText.set_fontsize(14)
+        plt.legend( loc = 'upper right' )
 
         i = b
         j = b + 1
@@ -816,6 +886,9 @@ class ABSURDer:
             Default = None.
         """
 
+        if not self.rot_load:
+            raise ValueError("Rotamers have not been loaded. Use load_rotamers() for that.")
+
         def get_hist(nblocks, blocksize, ang_methyls, mn=-180, mx=180):
 
             histograms = []
@@ -850,7 +923,6 @@ class ABSURDer:
         fig, axs = plt.subplots(a, b, figsize=size)
         angs = []
         for ax in fig.axes:
-
             for angg in range(4):
                 if idx in self.ami[angg] and angg not in angs:
                     ang = angg
@@ -901,10 +973,98 @@ class ABSURDer:
 
     #------------------------------------------------------------------------------------------------------------------
 
-    def plot_2d_rotamers( self, idx, nblocks, block_size, ntrajs, opt_theta, outfig = None ):
+    def plot_thr26( self, idx, nblocks, block_size, ntrajs, opt_theta = None, outfig = None ):
 
         """
         Plots the rotamer distributions for a given methyl group.
+
+        Parameters
+        ----------
+        idx : str
+            residue name and number (ex. ILE9).
+        nblocks : int
+            number of blocks employed in the calculation.
+        block_size : int
+            size of blocks in ps.
+        ntrajs : int
+            number of trajectories used to compute the rotamers.
+        opt_theta : int
+            theta corresponding to the optimal set of weights. If not provided, no reweighted results will be shown.
+            Default: None.
+        outfig : str
+            path to the figure to save. If not provided, the figure will be prompted on screen and not saved.
+            Default = None.
+        """
+
+        def get_hist(nblocks, blocksize, ang_methyls, mn=-180, mx=180):
+
+            histograms = []
+            for b in range(nblocks - 1):
+                out = ang_methyls[b * block_size + 1:(b + 1) * block_size]
+                h, _ = np.histogram(out, bins=100, range=(mn, mx))
+                histograms.append(h)
+
+            return histograms
+
+        chi1      = ['ILE', 'LEU', 'MET', 'THR']
+        chi2      = ['ILE', 'LEU', 'MET']
+        ang_names = [r"$\chi_1$", r"$\chi_2$", "$\phi$", "$\psi$"]
+        rng_max   = [240, 240, 180, 180]
+        rng_min   = [-120, -120, -180, -180]
+        shift     = [17, 17, 0, 0]
+        len_traj  = int(nblocks / ntrajs)
+
+        plt.figure( figsize = ( 9.55, 5 ) )
+        plt.title('THR26', fontsize=18, weight = 'bold')
+        angs = []
+
+        ang = 0
+        ind         = self.ami[ang].index(idx)
+        tmp_exp     = self.exrot[ang][:, ind]
+        hist_exp, _ = np.histogram(tmp_exp, bins=100, range=(-180, 180))
+        norm        = np.sum(hist_exp)
+        hist_exp    = hist_exp / norm / 3.6
+        hist_exp    = np.roll(hist_exp, shift[ang])  # shifts histogram to optimal range
+
+        tmp_md = self.mdrot[ang][:, ind]
+        hist   = get_hist( nblocks, block_size, tmp_md )
+
+        conc = ()
+        for n in range(1, ntrajs + 1):
+            conc = conc + (hist[(n - 1) * len_traj:n * len_traj - 1],)
+        hist = np.concatenate(conc)
+
+        hist_sum = np.average(hist, axis=0) * len(hist)
+        norm     = np.sum(hist_sum)
+        hist_md = hist_sum / norm / 3.6
+        hist_md = np.roll(hist_md, shift[ang])
+
+        if opt_theta != None:
+            hist_sum = np.average(hist, axis=0, weights=self.res[opt_theta]) * len(hist)
+            norm     = np.sum(hist_sum)
+            hist_rw  = hist_sum / norm / 3.6
+            hist_rw  = np.roll(hist_rw, shift[ang])
+
+        plt.plot(np.linspace(rng_min[ang], rng_max[ang], 100), hist_exp, c='k', lw=4, label='NMR')
+        plt.plot(np.linspace(rng_min[ang], rng_max[ang], 100), hist_md, c='tab:grey', lw=4, ls=':', label='MD')
+
+        if opt_theta != None:
+            plt.plot(np.linspace(rng_min[ang], rng_max[ang], 100), hist_rw, c='tab:red', lw=4, ls='--', label='ABSURDer')
+        plt.xlabel(ang_names[ang])
+        plt.ylabel(r'$p(\chi_1)$')
+        #ax.yaxis.set_major_formatter(mpl.ticker.StrMethodFormatter('{x:1.2f}'))
+
+        if outfig != None:
+            plt.tight_layout(rect=[0, 0.1, 1, 1])
+            plt.savefig(outfig + '.pdf', format='pdf')
+            print(f"# Saved {outfig}.pdf")
+
+    #------------------------------------------------------------------------------------------------------------------
+
+    def plot_2d_rotamers( self, idx, nblocks, block_size, ntrajs, opt_theta, outfig = None ):
+
+        """
+        Plots the chi1-chi2 rotamer distribution for a given methyl group.
 
         Parameters
         ----------
@@ -920,6 +1080,9 @@ class ABSURDer:
             path to the figure to save. If not provided, the figure will be prompted on screen and not saved.
             Default = None.
         """
+
+        if not self.rot_load:
+            raise ValueError("Rotamers have not been loaded. Use load_rotamers() for that.")
 
         ind         = self.ami[0].index(idx)
         ind2        = self.ami[1].index(idx)

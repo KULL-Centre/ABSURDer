@@ -1,9 +1,10 @@
 # ABSURDer
 **Authors**:  
 Simone Orioli&nbsp; &nbsp; &nbsp;| email: simone.orioli@nbi.ku.dk      
-Felix Kummerer | email: felix.kummerer@bio.ku.dk
+Felix Kummerer | email: felix.kummerer@bio.ku.dk  
+Falk Hoffmann&nbsp; &nbsp;| email: falk.hoffmann@hzg.de   
   
-Python code for the reweighting of NMR relaxation rates. 
+Python code for calculating and reweighting NMR relaxation rates. 
 
 ## Dependencies
 **Core**

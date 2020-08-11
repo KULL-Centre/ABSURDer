@@ -469,7 +469,7 @@ class ABSURDer:
         print(chi2)
 
         plt.figure( figsize = (9.55,5) )
-        plt.plot( np.flip( np.arange(1,nsamples+1,1) )/nsamples * 100, chi2, 'o-', c = 'k' )
+        plt.plot( np.flip( np.arange(1,nsamples+1,1) )/nsamples * 100, chi2, 'o-', c = 'tab:blue', markersize = 8, linewidth = 2, markeredgecolor = 'k' )
         plt.xlabel('% of MD data retained')
         plt.ylabel(r'$\chi^2$ to full MD dataset')
         plt.tight_layout()
@@ -812,7 +812,13 @@ class ABSURDer:
             Default = None.
         """
 
-        fig = plt.figure( figsize = (20, 6) )
+        mpl.rcParams['xtick.labelsize'] = 18
+        mpl.rcParams['ytick.labelsize'] = 18
+        mpl.rcParams['axes.labelsize'] = 18
+        mpl.rcParams['legend.fontsize'] = 18
+
+        #fig = plt.figure( figsize = (20, 6) )
+        fig = plt.figure(figsize=(9.55, 3))
 
         for r in range( self.r ):
             x      = np.linspace( self.rmd[r, idx, :].min(), self.rmd[r, idx, :].max(), num = 100 )
@@ -854,9 +860,11 @@ class ABSURDer:
             if r == 0:
                 plt.ylabel( 'p(R)' )
             elif r == self.r - 1:
-                plt.legend( bbox_to_anchor=(1.05, 1), loc = 'upper left', borderaxespad = 0. )
+                #plt.legend( bbox_to_anchor=(1.05, 1), loc = 'upper left', borderaxespad = 0. )
+                pass
 
-            plt.suptitle( self.mnl[idx], fontsize = 26 )
+            plt.suptitle( self.mnl[idx], fontsize = 18 )
+            plt.tight_layout(rect=[0, 0, 1, 0.95])
 
             if outfig != None:
                 plt.savefig(outfig + '.pdf', format='pdf')

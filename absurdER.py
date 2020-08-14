@@ -4,6 +4,8 @@ import pickle
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 from matplotlib.colors import ListedColormap
+from matplotlib.patches import Patch
+from matplotlib.lines import Line2D
 import scipy.stats as scs
 from itertools import combinations
 import warnings
@@ -89,7 +91,7 @@ class ABSURDer:
         self.cor = []                                                # Pearson correlation corresponding to optimized weights
 
         self.specdens_load = False                                   # spectral densities have been loaded
-        self.rot_load     = False                                    # rotamers have been loaded
+        self.rot_load      = False                                   # rotamers have been loaded
 
         for r in range(self.r):
             self.ix2.append( self.chi2r(r, self.w0) )
@@ -114,13 +116,17 @@ class ABSURDer:
             path to a numpy array or numpy array
         """
 
-        if type(r) == str:
+        if type(r) == str and r[-3:] == 'npy':
             r = np.load( r )
+            return r
+        elif type(r) == str and r[-3:] == 'pkl':
+            pin = open( r, "rb" )
+            r = pickle.load(pin)
             return r
         elif type(r) == np.ndarray:
             return r
         else:
-            raise ValueError(f"# Provided {tp} rates have to be either numpy.ndarray or a string.")
+            raise ValueError(f"# Provided {tp} rates have to be either numpy.ndarray, a pickle or a string.")
     #----------------------------------------------------------------------------------------------------------------
 
     def build_toyexp( self ):
@@ -333,7 +339,6 @@ class ABSURDer:
 
         self.res = []
         bounds = [(0,1)] * len(self.w0)                                                  # weights have to be bound between 0 and 1
-        #opt    = { 'eps': self.eps, 'maxiter': 10000, 'maxfun': 5000000, 'ftol': 1e-8 }  # minimizer options
         opt    = { 'maxiter': 10000, 'maxfun': 10000000 }
         flags  = []                                                                      # stores error messages of minimizations that didn't converge
 
@@ -418,62 +423,80 @@ class ABSURDer:
             self.chi.append( x2 )
     #----------------------------------------------------------------------------------------------------------------
 
-    def create_mask( self, mx, intervals ):
+    def create_masks( self, mx, intervals ):
         mask = np.empty(mx)
         mask.fill(1)
 
         for i in intervals:
             mask[i[0]:i[1]].fill(0)
 
-        return mask
+        return mask, 1-mask
     # ----------------------------------------------------------------------------------------------------------------
 
-    def evaluate_sampling( self, window_length ):
+    def evaluate_sampling( self, window_length, r, label = None, outfig = None ):
 
+        rmd = np.copy( self.rmd )
+        rex = np.copy( self.rmd )
         nsamples = int( self.b / window_length )
-        rmd_copy = np.copy( self.rmd )
-        emd_copy = np.copy( self.emd )
-        rex_copy = np.copy( self.rex )
 
         A = []
-        for n in range(nsamples+1):
-            A.append( [n * window_length, (n + 1) * window_length] )
+        for n in range(nsamples + 1):
+            A.append([n * window_length, (n + 1) * window_length])
 
-        self.emd = np.zeros_like(self.rmd[:, :, 0])
-        self.rex = np.average( self.rmd, axis = -1 )
-        chi = self.chi2r(-1, self.w0)
+        del A[-1]
 
         chi2 = []
+        chi2_std = []
         for i in range(nsamples):
             L = list( combinations(A, i) )
 
             chi2_av = []
             for l in L:
-                mask     = self.create_mask( nsamples * window_length, l )
-                self.rmd = self.rmd.compress( mask, axis = -1 )
-                b        = np.shape(self.rmd)[-1]
-                self.emd = np.zeros_like( self.rmd[:,:,0] )
 
-                w0 = np.full( b, 1./b )
-                chi = self.chi2r( -1, w0 )
+                if l == ():
+                    continue
+                elif len(l) > nsamples/2:
+                    continue
+
+                mask1, mask2 = self.create_masks( nsamples * window_length, l )
+
+                rmd = rmd.compress( mask1, axis = -1 ) # apply the mask
+                emd = np.std( rmd, axis = -1 ) / np.sqrt( rmd.shape[-1] )
+                rmd = np.average( rmd, axis = -1 )  # average over blocks
+
+                rex = rex.compress( mask2, axis = -1 ) # apply the opposite mask
+                eex = np.std( rex, axis = -1 ) / np.sqrt( rex.shape[-1] )
+                rex = np.average( rex, axis = -1 ) # average over blocks
+
+                chi =  np.sqrt( np.sum( (rex[r] - rmd[r])**2 ) / self.m )
                 chi2_av.append( chi )
 
-                self.rmd = np.copy( rmd_copy )
+                rmd = np.copy( self.rmd )
+                rex = np.copy( self.rmd )
+
+            if chi2_av == []:
+                continue
 
             chi2.append( np.average(chi2_av) )
+            chi2_std.append( np.std(chi2_av) / np.sqrt( len(chi2_av) ) )
 
-        self.emd = np.copy( emd_copy )
-        self.rmd = np.copy( rmd_copy )
-        self.rex = np.copy( rex_copy )
+        plt.figure(figsize=(9.55, 5))
+        plt.plot(np.arange(1, nsamples / 2 + 1, 1), chi2, 'o-', c='tab:blue', markersize=8,
+                 linewidth=2, markeredgecolor='k')
+        plt.errorbar( np.arange(1, nsamples / 2 + 1, 1), chi2, yerr = chi2_std, c = 'tab:blue' )
 
-        print(chi2)
+        if label != None:
+            plt.ylabel('RMSD R' + label + r' [s$^{-1}$]')
+        else:
+            plt.ylabel(r'RMSD [s$^{-1}$]')
+        plt.xlabel(r'$N$ left out')
 
-        plt.figure( figsize = (9.55,5) )
-        plt.plot( np.flip( np.arange(1,nsamples+1,1) )/nsamples * 100, chi2, 'o-', c = 'tab:blue', markersize = 8, linewidth = 2, markeredgecolor = 'k' )
-        plt.xlabel('% of MD data retained')
-        plt.ylabel(r'$\chi^2$ to full MD dataset')
-        plt.tight_layout()
-        plt.savefig('chi2_crosscorr.pdf', format = 'pdf')
+
+        if outfig != None:
+            plt.tight_layout()
+            plt.savefig(outfig + '.pdf', format='pdf')
+        else:
+            plt.show()
     # ----------------------------------------------------------------------------------------------------------------
 
     def plot_phix2r( self, r, outfig = None ):
@@ -981,7 +1004,7 @@ class ABSURDer:
 
     #------------------------------------------------------------------------------------------------------------------
 
-    def plot_thr26( self, idx, nblocks, block_size, ntrajs, opt_theta = None, outfig = None ):
+    def plot_single_rotamer( self, idx, ang, nblocks, block_size, ntrajs, opt_theta = None, outfig = None ):
 
         """
         Plots the rotamer distributions for a given methyl group.
@@ -1023,10 +1046,9 @@ class ABSURDer:
         len_traj  = int(nblocks / ntrajs)
 
         plt.figure( figsize = ( 9.55, 5 ) )
-        plt.title('THR26', fontsize=18, weight = 'bold')
+        plt.title( idx, fontsize=18, weight = 'bold')
         angs = []
 
-        ang = 0
         ind         = self.ami[ang].index(idx)
         tmp_exp     = self.exrot[ang][:, ind]
         hist_exp, _ = np.histogram(tmp_exp, bins=100, range=(-180, 180))
@@ -1059,11 +1081,11 @@ class ABSURDer:
         if opt_theta != None:
             plt.plot(np.linspace(rng_min[ang], rng_max[ang], 100), hist_rw, c='tab:red', lw=4, ls='--', label='ABSURDer')
         plt.xlabel(ang_names[ang])
-        plt.ylabel(r'$p(\chi_1)$')
+        plt.ylabel(r'$p($' + ang_names[ang] + r'$)$')
         #ax.yaxis.set_major_formatter(mpl.ticker.StrMethodFormatter('{x:1.2f}'))
 
         if outfig != None:
-            plt.tight_layout(rect=[0, 0.1, 1, 1])
+            plt.tight_layout()
             plt.savefig(outfig + '.pdf', format='pdf')
             print(f"# Saved {outfig}.pdf")
 
@@ -1173,4 +1195,97 @@ class ABSURDer:
 
         plt.suptitle(idx, fontsize=18, weight='bold')
         plt.tight_layout(rect=[0, 0, 1, 0.95])
+    #------------------------------------------------------------------------------------------------------------------
+
+    def phi_psi_rmsd( self, ang, nblocks, block_size, ntrajs, opt_theta ):
+
+        def get_hist(nblocks, blocksize, ang_methyls, mn=-180, mx=180):
+
+            histograms = []
+            for b in range(nblocks - 1):
+                out = ang_methyls[b * block_size + 1:(b + 1) * block_size]
+                h, _ = np.histogram(out, bins = 100, range=(mn, mx))
+                histograms.append(h)
+
+            return histograms
+
+        len_traj = int(nblocks / ntrajs)
+        rmsd = []
+
+        for res in self.ami[ang]:
+            ind = self.ami[ang].index(res)
+            tmp_exp = self.exrot[ang][:, ind]
+            hist_exp, _ = np.histogram(tmp_exp, bins=100, range=(-180, 180))
+            norm = np.sum(hist_exp)
+            hist_exp = hist_exp / norm / 3.6
+
+            tmp_md = self.mdrot[ang][:, ind]
+            hist = get_hist(nblocks, block_size, tmp_md)
+
+            conc = ()
+            for n in range(1, ntrajs + 1):
+                conc = conc + (hist[(n - 1) * len_traj:n * len_traj - 1],)
+            hist = np.concatenate(conc)
+
+            hist_sum = np.average(hist, axis=0) * len(hist)
+            norm = np.sum(hist_sum)
+            hist_md = hist_sum / norm / 3.6
+
+            hist_sum = np.average(hist, axis=0, weights = self.res[opt_theta]) * len(hist)
+            norm = np.sum(hist_sum)
+            hist_rw = hist_sum / norm / 3.6
+
+            rmsd_md = self.rmsd( hist_exp, hist_md )
+            rmsd_rw = self.rmsd( hist_exp, hist_rw )
+            rmsd.append( (rmsd_md - rmsd_rw) )
+
+        return rmsd
+    #------------------------------------------------------------------------------------------------------------------
+
+    def rmsd( self, exp, md ):
+        rmsd = np.sqrt( 1 / len(exp) * np.sum( ( exp - md )**2 ) )
+        return rmsd
+    #------------------------------------------------------------------------------------------------------------------
+
+    def plot_delta_rmsds( self, ang, delta, label, outfig = None ):
+
+        mpl.rcParams['xtick.labelsize'] = 18
+        mpl.rcParams['ytick.labelsize'] = 18
+
+        palette = []
+        for r in self.ami[ang]:
+            if 'ALA' in r:
+                palette.append('tab:red')
+            elif 'ILE' in r:
+                palette.append('tab:brown')
+            elif 'LEU' in r:
+                palette.append('tab:green')
+            elif 'THR' in r:
+                palette.append('tab:orange')
+            elif 'VAL' in r:
+                palette.append('tab:blue')
+            elif 'MET' in r:
+                palette.append('tab:purple')
+
+        custom_lines = [Patch(edgecolor='k', facecolor='tab:red'),
+                        Patch(edgecolor='k', facecolor='tab:brown'),
+                        Patch(edgecolor='k', facecolor='tab:green'),
+                        Patch(edgecolor='k', facecolor='tab:orange'),
+                        Patch(edgecolor='k', facecolor='tab:blue'),
+                        Patch(edgecolor='k', facecolor='tab:purple')]
+
+        labels = ['ALA', 'ILE', 'LEU', 'THR', 'VAL', 'MET']
+
+        fig = plt.figure( figsize=(9.55, 6) )
+
+        plt.bar( np.arange(0,len(delta),1), delta, edgecolor='k', color = palette, zorder=10 )
+
+        plt.xlabel('Residues' )
+        plt.ylabel(r'$\Delta $RMSD(' + label + ')' )
+        plt.tight_layout()
+
+        if outfig != None:
+            plt.savefig( outfig + '.pdf', format = 'pdf')
+        else:
+            plt.show()
     #------------------------------------------------------------------------------------------------------------------

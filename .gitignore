@@ -4,3 +4,5 @@ __pycache__
 spectral_densities
 rotamers
 *.tgz
+.ipynb_checkpoints
+paper_figures.ipynb

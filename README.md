@@ -1,7 +1,7 @@
 # ABSURDer
 **Authors**:  
 Simone Orioli&nbsp; &nbsp; &nbsp;| email: simone.orioli@nbi.ku.dk      
-Felix Kummerer | email: felix.kummerer@bio.ku.dk  
+Felix K&uuml;mmerer | email: felix.kummerer@bio.ku.dk  
 Falk Hoffmann&nbsp; &nbsp;| email: falk.hoffmann@hzg.de   
 
 Python code for calculating and reweighting NMR relaxation rates.
@@ -69,7 +69,7 @@ file has not to be modified.
 `ABSURDer.py` is a class for the reweighting of NMR relaxation data. For help, refer to the Jupyter Notebook
 `absurder_example.ipynb`.
 
-### `compute_rotamers.py`
+### compute_rotamers.py
 The script uses MDTraj to compute the values of the dihedral angles for methyl bearing residues. The use of
 this script is optional and is not required for the calculation of the NMR relaxation rates. An example run
 is provided by the following:
@@ -79,8 +79,8 @@ python compute_rotamers.py --traj /path/to/xtc.xtc --top /path/to/pdb.pdb --out 
 ```
 
 ## References
-[1] F. Kummerer, S. Orioli, D. Harding-Larsen, Y. Gravilov, F. Hoffman, K. Lindorff-Larsen,
- "Fitting side-chain NMR relaxation data using molecular simulations".  
+[1] F. K&uuml;mmerer, S. Orioli, D. Harding-Larsen, Y. Gravilov, F. Hoffman, K. Lindorff-Larsen,
+ "Fitting side-chain NMR relaxation data using molecular simulations". In preparation.  
 [2] F. Hoffmann, F. A. Mulder, L. V. Schäfer, "Predicting NMR relaxation of proteins from molecular dynamics
 simula tions with accurate methyl rotation barriers". J. Chem. Phys 152(8), 2020.  
 [3] F. Hoffmann, F. A. Mulder, L. V. Schäfer, "Accurate methyl group dynamics in protein simulations
